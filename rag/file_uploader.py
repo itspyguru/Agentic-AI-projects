@@ -1,36 +1,40 @@
 import os
-import tempfile
 import streamlit as st
-from langchain_community.document_loaders import (
-      PyPDFLoader, TextLoader, Docx2txtLoader, CSVLoader,                                       
-      UnstructuredMarkdownLoader,                                                               
-  )
+import tempfile
 
-LOADERS = {     
-      ".pdf":  PyPDFLoader,
-      ".txt":  TextLoader,                                                                      
-      ".md":   UnstructuredMarkdownLoader,
-      ".docx": Docx2txtLoader,                                                                  
-      ".csv":  CSVLoader,                                                                       
-  }
+from langchain_community.document_loaders import (
+    PyPDFLoader, TextLoader, Docx2txtLoader, CSVLoader,UnstructuredMarkdownLoader
+)
+
+LOADERS = {
+    ".pdf" : PyPDFLoader,
+    ".txt" : TextLoader,
+    ".docx" : Docx2txtLoader,
+    ".csv" : CSVLoader,
+    ".md" : UnstructuredMarkdownLoader
+}
 
 def upload_file():
-    uploaded_file = st.file_uploader("Upload a file", type=["pdf", "txt", "md", "docx", "csv"])
-    if uploaded_file is None:
+    upload_files = st.file_uploader("Upload a file", type=["pdf", "txt", "docx", "csv", "md"],
+                                   accept_multiple_files=True)
+    if upload_files is None:
         return None
     
-    ext = os.path.splitext(uploaded_file.name)[1].lower()                                         
-    loader_cls = LOADERS.get(ext)                                                                 
-    if loader_cls is None:
-        st.sidebar.error(f"Unsupported file type: {ext}")                                         
-        return None
+    all_docs = []
+    for upload_file in upload_files:
+        ext = os.path.splitext(upload_file.name)[1]
+        loader_cls = LOADERS.get(ext)
+        if loader_cls is None:
+            st.sidebar.error("Unsupported file type!")
+            return None
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        tmp_file_path = tmp_file.name
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            tmp_file.write(upload_file.read())
+            tmp_file_path = tmp_file.name
 
-    loader = loader_cls(tmp_file_path)
-    documents = loader.load()
-    st.sidebar.success(f"Loaded {len(documents)} pages from the file.")
-    st.write(documents)
-    return documents
+        loader = loader_cls(tmp_file_path)
+        documents = loader.load()
+        all_docs.extend(documents)
+
+    st.sidebar.success(f"Files uploaded successfully with {len(all_docs)} pages!")
+    return all_docs

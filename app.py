@@ -1,11 +1,9 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 
 import os
 import streamlit as st
-from datetime import datetime
 from dotenv import load_dotenv
 
 from sidebar import create_sidebar
@@ -28,15 +26,20 @@ if "messages" not in st.session_state:
 
 st.title("Langchain Chatbot with Gemini")
 system_prompt, temperature, max_tokens = create_sidebar(st)
+system_message = SystemMessage(content=system_prompt)
 
 # =========================
 # DISPLAY CHAT HISTORY
 # =========================
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
+for messages in st.session_state["messages"]:
+    if isinstance(messages, HumanMessage):
+        with st.chat_message("user"):
+            st.markdown(messages.content)
+    elif isinstance(messages, AIMessage):
+        with st.chat_message("assistant"):
+            st.markdown(messages.content)
+    
 # =========================
 # CHAT INPUT
 # =========================
@@ -46,8 +49,10 @@ chunks = split_documents(documents) if documents else None
 st.write(chunks)
 user_input = st.chat_input("Type your query here...")
 if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.chat_message("user").markdown(user_input)
+    human_message = HumanMessage(content=user_input)
+    st.session_state.messages.append(human_message)
+    with st.chat_message("user"):
+        st.markdown(human_message.content)
 
     # gemini ai
     llm = ChatGoogleGenerativeAI(
@@ -56,40 +61,22 @@ if user_input:
         max_tokens=max_tokens, 
         streaming=True
     )
+    messages = [system_message] + st.session_state["messages"]
     parser = StrOutputParser()
     chain = llm | parser
-
-    history = []
-    # System message
-    history.append(
-        SystemMessage(
-            content=system_prompt
-        )
-    )
-
-    # Previous conversation
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            history.append(
-                HumanMessage(content=msg["content"])
-            )
-
-        elif msg["role"] == "assistant":
-            history.append(
-                AIMessage(content=msg["content"])
-            )
+    response = chain.stream(messages)
 
     # Assistant response
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
         full_response = ""
         # Stream response
-        for chunk in chain.stream(history):
+        for chunk in response:
             full_response += chunk
             response_placeholder.markdown(
                 full_response + "▌"
             )
         response_placeholder.markdown(full_response)
 
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    st.session_state.messages.append(AIMessage(content=full_response))
 

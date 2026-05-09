@@ -9,15 +9,14 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from sidebar import create_sidebar
+from rag.file_uploader import upload_file
+from rag.text_splitter import split_documents
 
 load_dotenv()
 os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
 os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT")
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
-
-st.title("Langchain Chatbot with Gemini")
-system_prompt, temperature, max_tokens = create_sidebar(st)
 
 # =========================
 # SESSION STATE
@@ -26,6 +25,9 @@ system_prompt, temperature, max_tokens = create_sidebar(st)
 # set session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+st.title("Langchain Chatbot with Gemini")
+system_prompt, temperature, max_tokens = create_sidebar(st)
 
 # =========================
 # DISPLAY CHAT HISTORY
@@ -39,6 +41,9 @@ for message in st.session_state.messages:
 # CHAT INPUT
 # =========================
 
+documents = upload_file()
+chunks = split_documents(documents) if documents else None
+st.write(chunks)
 user_input = st.chat_input("Type your query here...")
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})

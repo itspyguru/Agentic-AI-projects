@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from sidebar import create_sidebar
 from rag.file_uploader import upload_file
 from rag.text_splitter import split_documents
+from rag.vector_store import create_vector_store
+from rag.retriever import retrieve_documents
 
 load_dotenv()
 os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
@@ -39,14 +41,24 @@ for messages in st.session_state["messages"]:
     elif isinstance(messages, AIMessage):
         with st.chat_message("assistant"):
             st.markdown(messages.content)
-    
+
+# =========================
+# RAG - FILE UPLOAD, SPLIT, VECTOR STORE
+# =========================
+
+chunks, embeddings = None, None
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
+
+if documents:= upload_file():
+    chunks = split_documents(documents) if documents else None
+    embeddings = create_vector_store(chunks) if chunks else None
+    st.session_state.vector_store = embeddings
+
 # =========================
 # CHAT INPUT
 # =========================
 
-documents = upload_file()
-chunks = split_documents(documents) if documents else None
-st.write(chunks)
 user_input = st.chat_input("Type your query here...")
 if user_input:
     human_message = HumanMessage(content=user_input)
@@ -61,7 +73,18 @@ if user_input:
         max_tokens=max_tokens, 
         streaming=True
     )
-    messages = [system_message] + st.session_state["messages"]
+
+    if embeddings:
+        relevant_docs = retrieve_documents(embeddings, user_input)
+        context = "\n\nRelevant Documents:\n" + "\n".join([doc.page_content for doc in relevant_docs])
+        rag_prompt = f""" Answer the user question using ONLY the provided context.
+                Context: {context}
+                User Question:{user_input}
+        """
+        messages = [system_message, HumanMessage(content=rag_prompt)]
+    else:
+        messages = [system_message] + st.session_state["messages"]
+
     parser = StrOutputParser()
     chain = llm | parser
     response = chain.stream(messages)

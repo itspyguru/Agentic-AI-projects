@@ -11,6 +11,7 @@ from rag.file_uploader import upload_file
 from rag.text_splitter import split_documents
 from rag.vector_store import create_vector_store
 from rag.retriever import retrieve_documents
+from tools.agent import create_agent
 
 load_dotenv()
 os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
@@ -75,6 +76,10 @@ if user_input:
     )
 
     if embeddings:
+        # =========================
+        # RAG RETRIEVAL + GENERATION
+        # =========================
+
         relevant_docs = retrieve_documents(embeddings, user_input)
         context = "\n\nRelevant Documents:\n" + "\n".join([doc.page_content for doc in relevant_docs])
         rag_prompt = f""" Answer the user question using ONLY the provided context.
@@ -82,24 +87,60 @@ if user_input:
                 User Question:{user_input}
         """
         messages = [system_message, HumanMessage(content=rag_prompt)]
+
+        parser = StrOutputParser()
+        chain = llm | parser
+        response = chain.stream(messages)
+
+        # Assistant response
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            full_response = ""
+            # Stream response
+            for chunk in response:
+                full_response += chunk
+                response_placeholder.markdown(
+                    full_response + "▌"
+                )
+            response_placeholder.markdown(full_response)
     else:
-        messages = [system_message] + st.session_state["messages"]
-
-    parser = StrOutputParser()
-    chain = llm | parser
-    response = chain.stream(messages)
-
-    # Assistant response
-    with st.chat_message("assistant"):
-        response_placeholder = st.empty()
+        # =========================
+        # AGENT EXECUTION
+        # =========================
+        agent = create_agent(llm)
+        steps_box = st.status("Thinking...", expanded=False)
         full_response = ""
-        # Stream response
-        for chunk in response:
-            full_response += chunk
-            response_placeholder.markdown(
-                full_response + "▌"
-            )
-        response_placeholder.markdown(full_response)
+
+        def to_text(content):
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return "".join(
+                    b.get("text", "") for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+            return str(content)
+
+        for update in agent.stream(
+            {"messages": [system_message, HumanMessage(content=user_input)]},
+            stream_mode="updates",
+        ):
+            for node_name, node_update in update.items():
+                for m in node_update.get("messages", []):
+                    cls = type(m).__name__
+                    if getattr(m, "tool_calls", None):
+                        for tc in m.tool_calls:
+                            steps_box.write(f"**Tool:** `{tc['name']}` — {tc['args']}")
+                    elif cls == "ToolMessage":
+                        preview = to_text(m.content)[:300]
+                        steps_box.write(f"**Result:** {preview}…")
+                    elif cls == "AIMessage":
+                        text = to_text(m.content)
+                        if text:
+                            full_response = text
+
+        steps_box.update(label="Done", state="complete")
+        st.markdown(full_response)
 
     st.session_state.messages.append(AIMessage(content=full_response))
 

@@ -12,11 +12,9 @@ from rag.text_splitter import split_documents
 from rag.vector_store import create_vector_store
 from rag.retriever import retrieve_documents
 from tools.agent import create_agent
+from multimodal.image_processing import upload_image
 
 load_dotenv()
-os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
-os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT")
-os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 # =========================
@@ -26,6 +24,8 @@ os.environ["LANGCHAIN_TRACING_V2"] = "true"
 # set session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "message_images" not in st.session_state:
+    st.session_state.message_images = []
 
 st.title("Langchain Chatbot with Gemini")
 system_prompt, temperature, max_tokens = create_sidebar(st)
@@ -35,13 +35,16 @@ system_message = SystemMessage(content=system_prompt)
 # DISPLAY CHAT HISTORY
 # =========================
 
-for messages in st.session_state["messages"]:
-    if isinstance(messages, HumanMessage):
+for i, message in enumerate(st.session_state["messages"]):
+    images = st.session_state.message_images[i] if i < len(st.session_state.message_images) else []
+    if isinstance(message, HumanMessage):
         with st.chat_message("user"):
-            st.markdown(messages.content)
-    elif isinstance(messages, AIMessage):
+            st.markdown(message.content)
+    elif isinstance(message, AIMessage):
         with st.chat_message("assistant"):
-            st.markdown(messages.content)
+            st.markdown(message.content)
+            for img in images:
+                st.image(img)
 
 # =========================
 # RAG - FILE UPLOAD, SPLIT, VECTOR STORE
@@ -57,6 +60,17 @@ if documents:= upload_file():
     st.session_state.vector_store = embeddings
 
 # =========================
+# MULTIMODAL - IMAGE UPLOAD & VISION
+# =========================
+
+if "uploaded_image" not in st.session_state:
+    st.session_state.uploaded_image = None
+
+uploaded_image = upload_image()
+if uploaded_image:
+    st.session_state.uploaded_image = uploaded_image
+
+# =========================
 # CHAT INPUT
 # =========================
 
@@ -64,6 +78,8 @@ user_input = st.chat_input("Type your query here...")
 if user_input:
     human_message = HumanMessage(content=user_input)
     st.session_state.messages.append(human_message)
+    st.session_state.message_images.append([])
+    generated_images: list[str] = []
     with st.chat_message("user"):
         st.markdown(human_message.content)
 
@@ -103,44 +119,41 @@ if user_input:
                     full_response + "▌"
                 )
             response_placeholder.markdown(full_response)
+
     else:
         # =========================
         # AGENT EXECUTION
         # =========================
-        agent = create_agent(llm)
+
+        agent = create_agent(
+            llm,
+            uploaded_image=st.session_state.get("uploaded_image"),
+            generated_images=generated_images,
+        )
         steps_box = st.status("Thinking...", expanded=False)
         full_response = ""
-
-        def to_text(content):
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                return "".join(
-                    b.get("text", "") for b in content
-                    if isinstance(b, dict) and b.get("type") == "text"
-                )
-            return str(content)
 
         for update in agent.stream(
             {"messages": [system_message, HumanMessage(content=user_input)]},
             stream_mode="updates",
         ):
-            for node_name, node_update in update.items():
+            for node_update in update.values():
                 for m in node_update.get("messages", []):
                     cls = type(m).__name__
                     if getattr(m, "tool_calls", None):
                         for tc in m.tool_calls:
                             steps_box.write(f"**Tool:** `{tc['name']}` — {tc['args']}")
                     elif cls == "ToolMessage":
-                        preview = to_text(m.content)[:300]
-                        steps_box.write(f"**Result:** {preview}…")
-                    elif cls == "AIMessage":
-                        text = to_text(m.content)
-                        if text:
-                            full_response = text
+                        steps_box.write(f"**Result:** {m.text[:300]}…")
+                    elif cls == "AIMessage" and m.text:
+                        full_response = m.text
 
         steps_box.update(label="Done", state="complete")
-        st.markdown(full_response)
+        with st.chat_message("assistant"):
+            st.markdown(full_response)
+            for img in generated_images:
+                st.image(img)
 
     st.session_state.messages.append(AIMessage(content=full_response))
+    st.session_state.message_images.append(generated_images)
 

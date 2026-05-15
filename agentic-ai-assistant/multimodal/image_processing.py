@@ -45,16 +45,21 @@ def analyze_image(uploaded_file, prompt, llm):
     return AIMessage(content=response.text)
 
 def generate_image(prompt: str) -> str:
+
     response = client.models.generate_content(
         model="gemini-3.1-flash-image-preview",
-        contents=[prompt],
+        contents=[prompt]
     )
-    for part in response.parts or []:
-        if part.inline_data is not None:
-            image = part.as_image()
-            if image is None:
-                continue
-            path = GENERATED_DIR / f"{uuid.uuid4().hex}.png"
-            image.save(str(path))
-            return str(path)
-    raise RuntimeError("Model did not return an image.")
+
+    for candidate in response.candidates:
+        for part in candidate.content.parts:
+            if part.inline_data is not None:
+                image_bytes = part.inline_data.data
+                path = GENERATED_DIR / f"{uuid.uuid4().hex}.jpg"
+
+                with open(path, "wb") as f:
+                    f.write(image_bytes)
+
+                return str(path)
+
+    raise RuntimeError("Model did not return any image")

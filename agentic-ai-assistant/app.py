@@ -124,29 +124,41 @@ if user_input:
         # =========================
         # AGENT EXECUTION
         # =========================
-
         agent = create_agent(
             llm,
             uploaded_image=st.session_state.get("uploaded_image"),
-            generated_images=generated_images,
-        )
+            generated_images=generated_images
+            )
         steps_box = st.status("Thinking...", expanded=False)
         full_response = ""
+
+        def to_text(content):
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return "".join(
+                    b.get("text", "") for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+            return str(content)
 
         for update in agent.stream(
             {"messages": [system_message, HumanMessage(content=user_input)]},
             stream_mode="updates",
         ):
-            for node_update in update.values():
+            for node_name, node_update in update.items():
                 for m in node_update.get("messages", []):
                     cls = type(m).__name__
                     if getattr(m, "tool_calls", None):
                         for tc in m.tool_calls:
                             steps_box.write(f"**Tool:** `{tc['name']}` — {tc['args']}")
                     elif cls == "ToolMessage":
-                        steps_box.write(f"**Result:** {m.text[:300]}…")
-                    elif cls == "AIMessage" and m.text:
-                        full_response = m.text
+                        preview = to_text(m.content)[:300]
+                        steps_box.write(f"**Result:** {preview}…")
+                    elif cls == "AIMessage":
+                        text = to_text(m.content)
+                        if text:
+                            full_response = text
 
         steps_box.update(label="Done", state="complete")
         with st.chat_message("assistant"):

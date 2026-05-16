@@ -29,8 +29,12 @@ Parses and evaluates a resume against ATS (Applicant Tracking System) criteria.
 
 Generates role-specific interview questions and simulates a conversational interview session.
 
-- [ ] Question generation
-- [ ] Mock interview chat
+- [x] reads resume
+- [x] extracts skills/topics
+- [x] generates interview questions
+- [x] asks questions interactively
+- [x] stores interview state
+- [x] supports multiple questions
 
 ---
 

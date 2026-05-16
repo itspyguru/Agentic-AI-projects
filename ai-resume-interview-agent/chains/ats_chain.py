@@ -20,10 +20,10 @@ def create_context(resume):
     Resume : {resume}
     """
 
-def analyze_resume(resume_text: str, llm):
+def analyze_resume_chain(resume_text: str, llm):
     context = create_context(resume_text)
     prompt = ChatPromptTemplate.from_messages([("human", context)])
     structured_llm = llm.with_structured_output(ATSResponse)
     chain = prompt | structured_llm
 
-    return chain.invoke({})
+    return chain

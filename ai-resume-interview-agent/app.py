@@ -7,6 +7,8 @@ from chains.ats_chain import analyze_resume_chain
 from chains.skill_chain import extract_skills_from_resume_chain
 from chains.interview_chain import generate_question_chain
 from chains.evaluation_chain import evaluate_answer_chain
+from chains.rewrite_chain import rewrite_resume_chain
+from chains.format_chain import format_resume_chain
 
 import os
 from dotenv import load_dotenv
@@ -16,9 +18,10 @@ os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 llm = ChatGoogleGenerativeAI(model="gemini-3.1-pro-preview")
 
-SECTIONS = ["ATS Analysis", "Skills", "Interview"]
+SECTIONS = ["ATS Analysis", "Skills", "Interview", "Rewrite Resume"]
 
-for key in ("resume_text", "ats", "skills", "source_file","current_question", "latest_evaluation"):
+for key in ("resume_text", "ats", "skills", "source_file","current_question", 
+        "latest_evaluation", "rewritten_resume", "html_resume"):
     st.session_state.setdefault(key, None)
 for key in ("questions", "answers", "evaluations"):
     st.session_state.setdefault(key, [])
@@ -219,6 +222,41 @@ def render_questions():
     if ("latest_evaluation" in st.session_state and st.session_state.latest_evaluation):
         render_result(st.session_state.latest_evaluation)
 
+def render_rewrite_resume():
+    job_role = st.text_input("Enter Job Role")
+    job_description = st.text_area("Enter Job Description")
+
+    if st.button("Rewrite Resume"):
+        if job_role and job_description:
+            rewritten_resume = rewrite_resume_chain(
+                resume=st.session_state.resume_text,
+                ats=st.session_state.ats,
+                skills=st.session_state.skills.skills_flat_list,
+                job_role=job_role,
+                job_description=job_description,
+                llm=llm
+            ).invoke({})
+            st.session_state.rewritten_resume = rewritten_resume  # ← fix key name too
+            st.session_state.html_resume = None                   # reset on new rewrite
+        else:
+            st.warning("Please fill in both fields.")
+
+    if st.session_state.get("rewritten_resume"):
+        st.markdown(st.session_state.rewritten_resume)
+
+        if st.button("Format Resume"):
+            html_resume = format_resume_chain(st.session_state.rewritten_resume)
+            st.session_state.html_resume = html_resume
+
+    if st.session_state.get("html_resume"):
+        st.components.v1.html(st.session_state.html_resume, height=1100, scrolling=True)
+        st.download_button(
+            label="⬇️ Download Resume (.html)",
+            data=st.session_state.html_resume,
+            file_name=f"{st.session_state.rewritten_resume.contact.name.replace(' ', '_')}_resume.html",
+            mime="text/html",
+        )
+
 def main():
     st.set_page_config(page_title="AI Resume Analyzer", layout="wide")
 
@@ -252,6 +290,8 @@ def main():
         render_skills(st.session_state.skills)
     elif section == "Interview":
         render_questions()
+    elif section == "Rewrite Resume":
+        render_rewrite_resume()
 
 
 main()

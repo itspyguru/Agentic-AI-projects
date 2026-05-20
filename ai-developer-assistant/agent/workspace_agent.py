@@ -8,15 +8,28 @@ from langchain.agents import create_agent
 
 load_dotenv()
 
-SERVER_PATH = str(Path(__file__).resolve().parent.parent / "server" / "filesystem_server.py")
+SERVER_DIR = Path(__file__).resolve().parent.parent / "server"
+FILESYSTEM_SERVER = str(SERVER_DIR / "filesystem_server.py")
+SHELL_SERVER = str(SERVER_DIR / "shell_server.py")
+GIT_SERVER = str(SERVER_DIR / "git_server.py")
 
 async def get_workspace_agent():
     client = MultiServerMCPClient({
         "filesystem": {
             "command": "python",
-            "args": [SERVER_PATH],
+            "args": [FILESYSTEM_SERVER],
             "transport": "stdio",
-        }
+        },
+        "shell": {
+            "command": "python",
+            "args": [SHELL_SERVER],
+            "transport": "stdio",
+        },
+        "git": {
+            "command": "python",
+            "args": [GIT_SERVER],
+            "transport": "stdio",
+        },
     })
 
     tools = await client.get_tools()
@@ -27,5 +40,10 @@ async def get_workspace_agent():
     return create_agent(
         model=llm,
         tools=tools,
-        system_prompt="You are a workspace assistant that can list, read, and write files.",
+        system_prompt=(
+            "You are a workspace assistant. You can list, read, write, and delete files, "
+            "inspect file metadata, search file contents, run sandboxed shell commands, "
+            "execute Python files, and run git operations (status, log, diff, branches, "
+            "show, blame, add, commit) on the user's workspace."
+        ),
     )

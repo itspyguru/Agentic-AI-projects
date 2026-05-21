@@ -13,24 +13,26 @@ FILESYSTEM_SERVER = str(SERVER_DIR / "filesystem_server.py")
 SHELL_SERVER = str(SERVER_DIR / "shell_server.py")
 GIT_SERVER = str(SERVER_DIR / "git_server.py")
 
+MCP_CONFIG = {
+    "filesystem": {
+        "command": "python",
+        "args": [FILESYSTEM_SERVER],
+        "transport": "stdio",
+    },
+    "shell": {
+        "command": "python",
+        "args": [SHELL_SERVER],
+        "transport": "stdio",
+    },
+    "git": {
+        "command": "python",
+        "args": [GIT_SERVER],
+        "transport": "stdio",
+    }
+}
+
 async def get_workspace_agent():
-    client = MultiServerMCPClient({
-        "filesystem": {
-            "command": "python",
-            "args": [FILESYSTEM_SERVER],
-            "transport": "stdio",
-        },
-        "shell": {
-            "command": "python",
-            "args": [SHELL_SERVER],
-            "transport": "stdio",
-        },
-        "git": {
-            "command": "python",
-            "args": [GIT_SERVER],
-            "transport": "stdio",
-        },
-    })
+    client = MultiServerMCPClient(MCP_CONFIG)
 
     tools = await client.get_tools()
     llm = ChatGoogleGenerativeAI(

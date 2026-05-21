@@ -8,7 +8,7 @@ from langchain.agents import create_agent
 
 from agent.workspace_agent import get_workspace_agent
 from agent.planner_agent import get_planner_agent, ExecutionPlan
-from agent.executor_agent import execute_plan as run_plan
+from agent.executor_agent import execute_plan as run_plan, ExecutionState, StepResult
 
 load_dotenv()
 
@@ -29,11 +29,13 @@ async def get_orchestrator():
 
     @tool
     async def execute_plan(plan_json: str) -> str:
-        """Run a plan (JSON produced by plan_task) deterministically by calling the named MCP tools in order. Returns per-step results as JSON."""
+        """Run a plan (JSON produced by plan_task) deterministically by calling the named MCP tools in order. Returns an ExecutionState JSON with status, completed_steps, failed_steps, and per-step results."""
         print("* -------- Executing plans ------------------* ")
         plan = ExecutionPlan.model_validate_json(plan_json)
-        results = await run_plan(plan)
-        return json.dumps(results, default=str)
+        state = await run_plan(plan)
+        print(f"* -------- Status: {state.status} "
+              f"(done: {len(state.completed_steps)}, failed: {len(state.failed_steps)}) ----* ")
+        return state.model_dump_json()
 
     @tool
     async def workspace(query: str) -> str:
@@ -52,8 +54,8 @@ async def get_orchestrator():
             "You are the orchestrator for a developer assistant. You coordinate specialist sub-agents to fulfill the user's request.\n\n"
             "Default workflow for any development task:\n"
             "1. Call `plan_task` with the user's request to produce a structured plan.\n"
-            "2. Run the plan with `execute_plan` for fast, deterministic execution.\n"
-            "3. If a step in `execute_plan` reports an error, fall back to `workspace` with a natural-language instruction describing what that step was trying to do.\n\n"
+            "2. Run the plan with `execute_plan` for fast, deterministic execution. It returns an ExecutionState JSON with fields: status ('completed' | 'failed'), current_step, completed_steps, failed_steps, step_results.\n"
+            "3. Inspect the returned state. If `status` is 'failed', look at the last entry in `step_results` (its `tool`, `arguments`, and `error`) and delegate that specific step to `workspace` with a natural-language instruction.\n\n"
             "For simple one-shot tasks (e.g. 'show me git status'), you may skip planning and call `workspace` directly.\n"
             "Always summarize the final result for the user — do not just dump tool output."
         ),

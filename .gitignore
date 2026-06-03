@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Allow the dummy-values env for the realtime voice search demo
+!realtime-voice-search/.env

@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "faiss-cpu>=1.14.2",
     "google-genai>=2.7.0",
     "livekit-agents>=1.5.17,<1.5.18",
     "livekit-plugins-google>=1.5.17,<1.5.18",
